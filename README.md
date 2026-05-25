@@ -120,11 +120,10 @@ and expires after 24 hours. The frontend stores the token in JS memory only
 | POST | `/api/v1/query/{id}/action` | Bearer | Accept/Reject/Review recommendation |
 | GET | `/api/v1/audit` | Bearer | List audit records |
 | GET | `/api/v1/audit/{id}` | Bearer | Get audit record |
-| GET | `/api/v1/audit/{id}/export/json` | Export as JSON |
-| GET | `/api/v1/audit/{id}/export/pdf` | Export as PDF |
-| GET | `/api/v1/sessions` | List sessions |
-| GET | `/api/v1/sessions/{id}` | Get session with memory |
-| GET | `/metrics` | Prometheus metrics |
+| GET | `/api/v1/audit/{id}/export/json` | Bearer | Export audit record as JSON |
+| GET | `/api/v1/audit/{id}/export/pdf` | Bearer | Export audit record as PDF |
+| GET | `/api/v1/sessions` | Bearer | List sessions |
+| GET | `/api/v1/sessions/{id}` | Bearer | Get session with memory |
 
 Full interactive docs at http://localhost:8000/docs.
 

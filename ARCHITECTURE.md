@@ -79,7 +79,7 @@ Every significant decision made during implementation - what we chose, what we r
 **Chose:** Celery with Redis as broker for ingestion jobs  
 **Rejected:** Pure async background tasks (FastAPI BackgroundTasks), RQ, Postgres-backed queues
 
-**Why:** File ingestion (PDF extraction, chunking, embedding 50+ pages) can take 30-120 seconds. FastAPI BackgroundTasks do not survive server restart - if the pod dies mid-ingestion, the job is lost silently. Celery + Redis means jobs are persisted in Redis, survive restarts, and can be retried. The upload endpoint returns the resource ID + job ID immediately; the client polls `GET /api/v1/ingest/status/csv/{dataset_id}` for tabular uploads and `GET /api/v1/ingest/status/pdf/{document_id}` for documents. Status transitions: `pending → processing → ready | failed`.
+**Why:** File ingestion (PDF extraction, chunking, embedding 50+ pages) can take 30-120 seconds. FastAPI BackgroundTasks do not survive server restart - if the pod dies mid-ingestion, the job is lost silently. Celery + Redis means jobs are persisted in Redis, survive restarts, and can be retried. The upload endpoint returns the resource ID + job ID immediately; the client polls `GET /api/v1/ingest/status/csv/{dataset_id}` for tabular uploads and `GET /api/v1/ingest/status/pdf/{document_id}` for documents. Status transitions: `pending -> processing -> ready | failed`.
 
 **Trade-off:** Adds a Redis container and Celery worker. For a simpler system, asyncio tasks + database-backed job state (polling the DB for status) is a valid middle ground. We chose Celery because the assignment explicitly requires that jobs survive server restart.
 

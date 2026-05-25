@@ -81,6 +81,10 @@ async def test_ephemeral_query_does_NOT_call_add_turn():
                 headers=_auth_headers(),
             )
 
+    # Gate on success first - otherwise call_count == 0 could be a false pass
+    # caused by 401/422/500 short-circuiting the route before the ephemeral branch.
+    assert resp.status_code == 200, f"Route returned {resp.status_code}: {resp.text}"
+
     # The critical assertion: add_turn was NEVER called for an ephemeral query
     assert mock_add_turn.call_count == 0, \
         "add_turn() must not be called when is_ephemeral=True - scenario would contaminate memory"
@@ -106,6 +110,10 @@ async def test_normal_query_DOES_call_add_turn():
                 headers=_auth_headers(),
             )
 
+    # Gate on success first - call_count == 1 alone would not prove the
+    # ephemeral branch was reached if the route had failed earlier.
+    assert resp.status_code == 200, f"Route returned {resp.status_code}: {resp.text}"
+
     assert mock_add_turn.call_count == 1, \
         "add_turn() must be called exactly once for a normal conversational turn"
 
@@ -124,7 +132,7 @@ async def test_ephemeral_does_not_update_active_dataset_ids():
          patch("app.api.routes.query.add_turn", new=AsyncMock()):
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            await client.post(
+            resp = await client.post(
                 "/api/v1/query",
                 json={
                     "question": "Scenario q",
@@ -133,6 +141,10 @@ async def test_ephemeral_does_not_update_active_dataset_ids():
                 },
                 headers=_auth_headers(),
             )
+
+    # Gate on success - an early failure would leave active_dataset_ids
+    # untouched for the wrong reason (route never executed).
+    assert resp.status_code == 200, f"Route returned {resp.status_code}: {resp.text}"
 
     # Active datasets must NOT have been mutated by an ephemeral call
     assert fake_session.active_dataset_ids == [], \
