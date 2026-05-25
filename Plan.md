@@ -9,7 +9,7 @@
 
 ## Current Status
 
-**Phase:** Foundation (commit 1 - scaffolding in progress)
+**Phase:** Core complete - all 6 backend services + full frontend shipped (4 commits, pushed to main)
 
 ---
 
@@ -26,61 +26,70 @@ Build a full-stack AI co-pilot that combines:
 
 ## Build Phases
 
-### Phase 1 - Foundation (Day 1 AM)
+### Phase 1 - Foundation (DONE)
 - [x] Git setup, .gitignore, .env.example
 - [x] Plan.md and ARCHITECTURE.md
-- [ ] docker-compose.yml (full stack: postgres, chromadb, redis, ollama, backend, frontend)
-- [ ] Ollama entrypoint script (model warm-up before health check passes)
-- [ ] Backend Dockerfiles
+- [x] docker-compose.yml (full 6-service stack)
+- [x] Ollama entrypoint script (model warm-up before health check passes)
+- [x] Backend + Worker Dockerfiles
 
-### Phase 2 - Backend Core (Day 1 PM)
-- [ ] FastAPI app skeleton with structured logging
-- [ ] PostgreSQL models (Dataset, Document, Session, AuditRecord, Recommendation)
-- [ ] Alembic migrations (001_initial_schema)
-- [ ] Config management (pydantic-settings from .env)
-- [ ] Health check endpoint (/health, /ready)
-- [ ] API key auth middleware
+### Phase 2 - Backend Core (DONE)
+- [x] FastAPI app with structlog structured logging
+- [x] PostgreSQL models (Dataset, Document, ChatSession, ChatMessage, AuditRecord)
+- [x] Alembic migrations (001_initial_schema)
+- [x] Config management (pydantic-settings from .env)
+- [x] Health (/health) and readiness (/ready) endpoints
+- [x] API key auth + tenant_id derivation
 
-### Phase 3 - Data Ingestion (Day 1 PM)
-- [ ] CSV/Excel ingester: schema inference, column tagging, idempotent upload
-- [ ] PDF ingester: pdfplumber extraction, table handling, chunking (512/50)
-- [ ] Embedding generation via Ollama nomic-embed-text
-- [ ] ChromaDB storage with dedup (content hash)
-- [ ] Redis-backed background job queue for ingestion
+### Phase 3 - Data Ingestion (DONE)
+- [x] CSV/Excel ingester: schema inference, outlier detection, idempotent upload
+- [x] PDF ingester: pdfplumber tables + PyMuPDF text + pytesseract OCR fallback
+- [x] Chunking strategy: 512/50 prose + table-as-unit
+- [x] Embedding via Ollama nomic-embed-text
+- [x] ChromaDB storage with upsert dedup
+- [x] Redis + Celery worker for persistent ingestion jobs
 
-### Phase 4 - Hybrid Reasoning Engine (Day 2 AM)
-- [ ] RAG retriever: semantic search + cross-encoder reranking
-- [ ] SQL agent: LLM generates SELECT, sqlglot validates, sandboxed execution
-- [ ] Hybrid synthesizer: parallel retrieval paths, conflict surfacing
-- [ ] Structured recommendation card output (JSON schema enforced)
+### Phase 4 - Hybrid Reasoning Engine (DONE)
+- [x] RAG retriever: ChromaDB semantic search + cross-encoder rerank
+- [x] SQL agent: LLM generates SELECT, sqlglot AST validation, sandboxed execution
+- [x] Hybrid synthesizer: parallel retrieval, conflict surfacing
+- [x] JSON output with retry on parse failure
 
-### Phase 5 - Memory System (Day 2 AM)
-- [ ] Within-session memory (sliding window, last 4 turns)
-- [ ] Cross-session memory (summarization of older turns, stored in PostgreSQL)
-- [ ] Dataset context persistence across sessions
+### Phase 5 - Memory System (DONE)
+- [x] Within-session: sliding window (last 4 turns)
+- [x] Cross-session: summarization via local LLM, stored in PostgreSQL
+- [x] Dataset/document context persisted per session
 
-### Phase 6 - Product Layer (Day 2 PM)
-- [ ] Scenario comparison (2-3 assumption sets, side-by-side diff)
-- [ ] Immutable audit trail (append-only, JSON + PDF export)
-- [ ] Accept/Reject/Review actions with mandatory comment on reject
+### Phase 6 - Product Layer (DONE)
+- [x] Scenario comparison (2-3 assumption sets)
+- [x] Immutable audit trail (AuditRecord table, JSON + PDF export via reportlab)
+- [x] Accept/Reject (comment required)/Review actions
 
-### Phase 7 - Frontend (Day 2 PM - Day 3 AM)
-- [ ] React + Vite + Tailwind setup
-- [ ] Upload zone (drag-drop, CSV + PDF, progress)
-- [ ] Query interface (plain English input, streaming response)
-- [ ] Recommendation card (action, confidence, evidence panel, reasoning trace)
-- [ ] Scenario comparison view
-- [ ] Audit log viewer + export button
-- [ ] Session memory indicator (shows what system remembers)
+### Phase 7 - Frontend (DONE)
+- [x] React 18 + Vite + Tailwind
+- [x] Upload zone (drag-drop, polling, status updates)
+- [x] Query interface with session memory indicator
+- [x] Dataset/document multi-select
+- [x] Scenario comparison mode (2-3 side-by-side cards)
+- [x] Recommendation card (full evidence panel + reasoning trace)
+- [x] Audit log with expandable records + export buttons
+- [x] Nginx with SPA routing + API proxy
 
-### Phase 8 - Production Hardening (Day 3)
-- [ ] Concurrency control (semaphore on Ollama calls)
-- [ ] Graceful shutdown (SIGTERM handlers)
-- [ ] Structured logs (structlog, JSON format)
-- [ ] Basic metrics (Prometheus counters: request count, error rate, latency)
-- [ ] Resource limits in Docker Compose
-- [ ] README finalized
+### Phase 8 - Production Hardening (DONE)
+- [x] Ollama concurrency cap (asyncio.Semaphore)
+- [x] SIGTERM graceful shutdown handler
+- [x] structlog JSON logging in production mode
+- [x] Prometheus metrics middleware (request count, latency, error rate)
+- [x] Resource limits in Docker Compose (mem_limit per service)
+- [x] README finalized with audit JSON schema
+- [ ] Demo dataset generation (synthetic motor insurance CSV + actuarial PDF)
 - [ ] Video demo recorded
+
+### Next Steps (Day 3)
+- [ ] Generate synthetic demo data (Python script producing motor_policy_book.csv + actuarial_memo.pdf)
+- [ ] Add .env with working defaults so `docker compose up` just works
+- [ ] End-to-end smoke test (cold start -> upload -> query -> audit export)
+- [ ] Record video demo
 
 ---
 
