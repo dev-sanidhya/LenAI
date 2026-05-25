@@ -1,14 +1,24 @@
 """
 Scenario memory isolation tests.
-Verifies that is_ephemeral=True causes the scenario turn NOT to be
-written into the session memory timeline.
+These tests hit the actual /api/v1/query route and verify that the
+is_ephemeral flag controls whether add_turn() is invoked in production code.
+External dependencies (DB, Ollama, RAG, SQL agent) are mocked so the test
+exercises the routing/branching logic without needing a live stack.
 """
+import uuid
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-import uuid
+from httpx import AsyncClient, ASGITransport
+from app.main import app
+from app.api.routes.auth import create_access_token
 
 
-def make_session():
+def _auth_headers():
+    token = create_access_token("test-tenant-abc")
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _fake_session():
     session = MagicMock()
     session.id = uuid.uuid4()
     session.messages = []
@@ -19,54 +29,111 @@ def make_session():
     return session
 
 
-@pytest.mark.asyncio
-async def test_ephemeral_turn_not_persisted_to_memory():
-    """
-    When is_ephemeral is True, add_turn must NOT be called.
-    Scenario assumptions should never contaminate the conversational timeline.
-    """
-    from app.services.memory.memory_manager import add_turn
-
-    session = make_session()
-    db = AsyncMock()
-
-    with patch("app.services.memory.memory_manager.get_ollama_client") as mock_ollama:
-        mock_ollama.return_value.generate = AsyncMock(return_value="summary text")
-
-        # Simulate a non-ephemeral turn (normal query)
-        before_turn_count = session.turn_count
-        await add_turn(session, "What is the average premium?", "Increase by 10%", db)
-        assert session.turn_count == before_turn_count + 1
-        assert len(session.messages) == 2  # user + assistant
-
-        # Now reset and check ephemeral behaviour at the route level (mock the route logic)
-        session2 = make_session()
-        # Ephemeral: add_turn should NOT be called
-        # We simulate the condition from query.py
-        is_ephemeral = True
-        calls = []
-
-        async def mock_add_turn(s, user_msg, assistant_msg, db):
-            calls.append((user_msg, assistant_msg))
-
-        if not is_ephemeral:
-            await mock_add_turn(session2, "Scenario question", "Scenario answer", db)
-
-        assert len(calls) == 0, "add_turn must not be called for ephemeral scenario runs"
+def _fake_synthesis_result():
+    return {
+        "recommendation": {
+            "action": "Increase premium by 10%",
+            "confidence": "high",
+            "confidence_rationale": "Strong signal",
+            "document_evidence": [],
+            "sql_evidence": [],
+            "conflicts": [],
+            "reasoning_steps": ["Analyzed claims data"],
+            "uncertainty_sources": [],
+        },
+        "raw_model_output": '{"action":"Increase premium by 10%"}',
+        "retrieved_chunks": [],
+        "sql_queries": [],
+        "prompt_version": "v1.0",
+        "llm_model": "llama3.1:8b",
+        "embed_model": "nomic-embed-text",
+    }
 
 
 @pytest.mark.asyncio
-async def test_normal_turn_does_persist():
-    """Normal (non-ephemeral) turns ARE written to session memory."""
-    from app.services.memory.memory_manager import add_turn
+async def test_ephemeral_query_does_NOT_call_add_turn():
+    """
+    When is_ephemeral=True, the route must skip add_turn() entirely.
+    This is what guarantees scenario assumptions never contaminate
+    the conversational memory timeline.
+    """
+    fake_session = _fake_session()
 
-    session = make_session()
-    db = AsyncMock()
+    with patch("app.api.routes.query.get_or_create_session", new=AsyncMock(return_value=fake_session)), \
+         patch("app.api.routes.query.get_session_context", new=AsyncMock(return_value="")), \
+         patch("app.api.routes.query.synthesize", new=AsyncMock(return_value=_fake_synthesis_result())), \
+         patch("app.api.routes.query.add_turn", new=AsyncMock()) as mock_add_turn, \
+         patch("app.db.session.AsyncSessionLocal") as mock_session_local:
 
-    with patch("app.services.memory.memory_manager.get_ollama_client") as mock_ollama:
-        mock_ollama.return_value.generate = AsyncMock(return_value="summary")
+        # Make the dependency injected db a no-op committer
+        mock_db = AsyncMock()
+        mock_session_local.return_value.__aenter__.return_value = mock_db
 
-        await add_turn(session, "Real question", "Real answer", db)
-        assert session.turn_count == 1
-        assert any(m["role"] == "user" for m in session.messages)
-        assert any(m["role"] == "assistant" for m in session.messages)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post(
+                "/api/v1/query",
+                json={
+                    "question": "What happens if claims rise 25%?",
+                    "scenario_assumptions": {"claims_increase": 0.25},
+                    "scenario_label": "Stress test",
+                    "is_ephemeral": True,
+                },
+                headers=_auth_headers(),
+            )
+
+    # The critical assertion: add_turn was NEVER called for an ephemeral query
+    assert mock_add_turn.call_count == 0, \
+        "add_turn() must not be called when is_ephemeral=True - scenario would contaminate memory"
+
+
+@pytest.mark.asyncio
+async def test_normal_query_DOES_call_add_turn():
+    """
+    Sanity check the inverse: a normal (non-ephemeral) query persists to memory.
+    Without this, a bug could silently break conversational continuity for real queries.
+    """
+    fake_session = _fake_session()
+
+    with patch("app.api.routes.query.get_or_create_session", new=AsyncMock(return_value=fake_session)), \
+         patch("app.api.routes.query.get_session_context", new=AsyncMock(return_value="")), \
+         patch("app.api.routes.query.synthesize", new=AsyncMock(return_value=_fake_synthesis_result())), \
+         patch("app.api.routes.query.add_turn", new=AsyncMock()) as mock_add_turn:
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            resp = await client.post(
+                "/api/v1/query",
+                json={"question": "What is the average premium for under-25 drivers?"},
+                headers=_auth_headers(),
+            )
+
+    assert mock_add_turn.call_count == 1, \
+        "add_turn() must be called exactly once for a normal conversational turn"
+
+
+@pytest.mark.asyncio
+async def test_ephemeral_does_not_update_active_dataset_ids():
+    """
+    Ephemeral queries also must not change the session's active datasets,
+    because that would persist scenario context into future real queries.
+    """
+    fake_session = _fake_session()
+
+    with patch("app.api.routes.query.get_or_create_session", new=AsyncMock(return_value=fake_session)), \
+         patch("app.api.routes.query.get_session_context", new=AsyncMock(return_value="")), \
+         patch("app.api.routes.query.synthesize", new=AsyncMock(return_value=_fake_synthesis_result())), \
+         patch("app.api.routes.query.add_turn", new=AsyncMock()):
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await client.post(
+                "/api/v1/query",
+                json={
+                    "question": "Scenario q",
+                    "dataset_ids": ["ds-scenario-only"],
+                    "is_ephemeral": True,
+                },
+                headers=_auth_headers(),
+            )
+
+    # Active datasets must NOT have been mutated by an ephemeral call
+    assert fake_session.active_dataset_ids == [], \
+        "Ephemeral queries must not mutate session.active_dataset_ids"
