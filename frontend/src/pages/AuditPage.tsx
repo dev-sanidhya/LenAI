@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Download, ChevronDown, ChevronUp, FileJson, FileText } from "lucide-react";
-import { listAuditRecords, exportAuditJson, exportAuditPdf } from "../api/client";
+import { ChevronDown, ChevronUp, FileJson, FileText, Loader2 } from "lucide-react";
+import toast from "react-hot-toast";
+import { listAuditRecords, downloadAuditExport } from "../api/client";
 import type { AuditRecord } from "../types";
 
 const actionBadge = (action: string | null) => {
@@ -10,6 +11,40 @@ const actionBadge = (action: string | null) => {
   if (action === "reject") return <span className="badge-red">Rejected</span>;
   return <span className="badge-yellow">In Review</span>;
 };
+
+function ExportButton({ id, format }: { id: string; format: "json" | "pdf" }) {
+  const [loading, setLoading] = useState(false);
+
+  const handleDownload = async () => {
+    setLoading(true);
+    try {
+      // Uses authenticated axios instance - Bearer token sent in request header.
+      // Plain <a href> links cannot send custom headers, so downloads would fail.
+      await downloadAuditExport(id, format);
+    } catch {
+      toast.error(`Export failed`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleDownload}
+      disabled={loading}
+      className="btn-secondary text-xs"
+    >
+      {loading ? (
+        <Loader2 size={13} className="animate-spin" />
+      ) : format === "json" ? (
+        <FileJson size={13} />
+      ) : (
+        <FileText size={13} />
+      )}
+      Export {format.toUpperCase()}
+    </button>
+  );
+}
 
 function AuditRow({ record }: { record: AuditRecord }) {
   const [open, setOpen] = useState(false);
@@ -32,7 +67,6 @@ function AuditRow({ record }: { record: AuditRecord }) {
 
       {open && (
         <div className="border-t border-gray-100 p-4 space-y-4 bg-gray-50">
-          {/* Recommendation */}
           {record.recommendation && (
             <div>
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Recommendation</p>
@@ -41,7 +75,6 @@ function AuditRow({ record }: { record: AuditRecord }) {
             </div>
           )}
 
-          {/* Model provenance */}
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Model Provenance</p>
             <div className="flex gap-4 text-xs text-gray-600">
@@ -51,7 +84,6 @@ function AuditRow({ record }: { record: AuditRecord }) {
             </div>
           </div>
 
-          {/* SQL queries */}
           {record.sql_queries?.length > 0 && (
             <div>
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">SQL Executed</p>
@@ -63,7 +95,6 @@ function AuditRow({ record }: { record: AuditRecord }) {
             </div>
           )}
 
-          {/* Retrieved chunks */}
           {record.retrieved_chunks?.length > 0 && (
             <div>
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
@@ -81,7 +112,6 @@ function AuditRow({ record }: { record: AuditRecord }) {
             </div>
           )}
 
-          {/* Decision */}
           {record.user_action && (
             <div>
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Decision</p>
@@ -92,22 +122,9 @@ function AuditRow({ record }: { record: AuditRecord }) {
             </div>
           )}
 
-          {/* Export */}
           <div className="flex gap-2 pt-2 border-t border-gray-200">
-            <a
-              href={exportAuditJson(record.id)}
-              download
-              className="btn-secondary text-xs"
-            >
-              <FileJson size={13} /> Export JSON
-            </a>
-            <a
-              href={exportAuditPdf(record.id)}
-              download
-              className="btn-secondary text-xs"
-            >
-              <FileText size={13} /> Export PDF
-            </a>
+            <ExportButton id={record.id} format="json" />
+            <ExportButton id={record.id} format="pdf" />
           </div>
         </div>
       )}
@@ -131,9 +148,7 @@ export default function AuditPage() {
         </p>
       </div>
 
-      {isLoading && (
-        <p className="text-sm text-gray-400">Loading...</p>
-      )}
+      {isLoading && <p className="text-sm text-gray-400">Loading...</p>}
 
       {records?.length === 0 && (
         <div className="card p-10 text-center">
