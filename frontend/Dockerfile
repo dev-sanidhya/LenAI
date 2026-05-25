@@ -2,7 +2,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --legacy-peer-deps
+# Use npm install (not ci) so the build works whether or not a lock file is committed.
+# In a stricter CI pipeline this should be `npm ci` against a committed lockfile.
+RUN npm install --legacy-peer-deps --no-audit --no-fund
 
 COPY . .
 
