@@ -75,23 +75,51 @@ Exportable as structured JSON or formatted PDF.
 
 ## API Endpoints
 
-All endpoints require `X-API-Key` header.
+### Authentication
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/health` | Liveness check |
-| GET | `/ready` | Readiness check (all deps) |
-| POST | `/api/v1/ingest/csv` | Upload CSV/Excel |
-| POST | `/api/v1/ingest/pdf` | Upload PDF |
-| GET | `/api/v1/ingest/datasets` | List datasets |
-| GET | `/api/v1/ingest/documents` | List documents |
-| GET | `/api/v1/ingest/status/csv/{id}` | Dataset ingestion status |
-| GET | `/api/v1/ingest/status/pdf/{id}` | Document ingestion status |
-| POST | `/api/v1/query` | Submit pricing query |
-| POST | `/api/v1/query/{id}/action` | Accept/Reject/Review recommendation |
-| POST | `/api/v1/query/scenarios` | Run scenario comparison |
-| GET | `/api/v1/audit` | List audit records |
-| GET | `/api/v1/audit/{id}` | Get audit record |
+All protected endpoints require a Bearer JWT in the `Authorization` header.
+
+1. Exchange your API key for a short-lived JWT:
+   ```bash
+   curl -X POST http://localhost:8000/api/v1/auth/token \
+     -H "Content-Type: application/json" \
+     -d '{"api_key": "your-api-key"}'
+   ```
+   Response:
+   ```json
+   { "access_token": "eyJ...", "token_type": "bearer", "expires_in": 86400 }
+   ```
+
+2. Use the token on every subsequent request:
+   ```bash
+   curl http://localhost:8000/api/v1/ingest/datasets \
+     -H "Authorization: Bearer eyJ..."
+   ```
+
+The API key never travels over the wire after the exchange. The JWT is signed
+with `APP_SECRET_KEY`, contains a `tenant_id` claim derived from the API key,
+and expires after 24 hours. The frontend stores the token in JS memory only
+(no `localStorage`, no cookies) and clears it on page refresh or 401.
+
+### Endpoints
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/health` | public | Liveness check |
+| GET | `/ready` | public | Readiness (503 if any dep is degraded) |
+| GET | `/metrics` | public | Prometheus metrics |
+| POST | `/api/v1/auth/token` | api_key | Exchange API key for JWT |
+| POST | `/api/v1/ingest/csv` | Bearer | Upload CSV/Excel |
+| POST | `/api/v1/ingest/pdf` | Bearer | Upload PDF |
+| GET | `/api/v1/ingest/datasets` | Bearer | List datasets |
+| GET | `/api/v1/ingest/documents` | Bearer | List documents |
+| GET | `/api/v1/ingest/status/csv/{dataset_id}` | Bearer | Dataset ingestion status |
+| GET | `/api/v1/ingest/status/pdf/{document_id}` | Bearer | Document ingestion status |
+| PATCH | `/api/v1/ingest/csv/{dataset_id}/tags` | Bearer | Update column tags (feature/target/ignore) |
+| POST | `/api/v1/query` | Bearer | Submit pricing query (set `is_ephemeral:true` for scenarios) |
+| POST | `/api/v1/query/{id}/action` | Bearer | Accept/Reject/Review recommendation |
+| GET | `/api/v1/audit` | Bearer | List audit records |
+| GET | `/api/v1/audit/{id}` | Bearer | Get audit record |
 | GET | `/api/v1/audit/{id}/export/json` | Export as JSON |
 | GET | `/api/v1/audit/{id}/export/pdf` | Export as PDF |
 | GET | `/api/v1/sessions` | List sessions |
@@ -180,11 +208,12 @@ Current architecture handles ~10-20 concurrent users. See ARCHITECTURE.md for sc
 
 | Feature | Why | Production path |
 |---------|-----|-----------------|
-| JWT auth | API key sufficient for demo | Add JWT with org claims, swap `get_tenant_id` |
+| User accounts / RBAC | Single API key per tenant, exchanged for JWT | Add user table, password hashing, role claims on JWT |
+| Refresh tokens | 24h JWT, user re-auths on expiry | Add `/auth/refresh` with refresh token rotation |
 | Streaming responses | Adds WebSocket complexity | Ollama supports streaming, wire it up |
 | Fine-tuned model | Out of scope | Domain fine-tune on actuarial corpora |
-| Multi-tenant UI | Tenant isolation exists at DB layer | Add org switcher to frontend |
-| OCR quality guarantees | pytesseract is best-effort | Use a dedicated OCR service |
+| Multi-tenant UI | Tenant isolation enforced at DB + ChromaDB query level | Add org switcher to frontend |
+| OCR quality guarantees | pytesseract is best-effort for scanned PDFs | Use a dedicated OCR service (AWS Textract, Azure Document Intelligence) |
 
 ---
 
