@@ -59,6 +59,8 @@ Every significant decision made during implementation - what we chose, what we r
 
 **Migrations:** All schema changes go through numbered Alembic revisions. `alembic upgrade head` runs automatically on container start before the app accepts traffic.
 
+**Audit record immutability clarification:** Core provenance fields (query_text, sql_queries, retrieved_chunks, raw_model_output, model versions) are written once and never modified. The user action fields (user_action, user_comment, action_at) are updated exactly once when the analyst makes a decision. A 409 is returned on any second attempt to update action fields. This matches the actual implementation - the ADR was previously overstated as "no UPDATE ever runs on this table."
+
 ---
 
 ## 6. SQL Sandboxing: sqlglot AST Validation
@@ -120,7 +122,7 @@ Tables are a special case. Splitting a table mid-row destroys its meaning. We ex
 
 | Feature | Reason |
 |---------|--------|
-| User authentication (JWT/OAuth) | Demo uses a simple API key. Production would add JWT. Documented. |
+| Multi-tenant JWT (org claims, RBAC) | Auth uses server-issued JWT (API key exchanged at login). Tenant isolation enforced in all queries. RBAC roles not yet implemented. |
 | Multi-tenancy UI (org switching) | Tenant isolation is enforced at DB + ChromaDB level; the UI shows single-tenant. |
 | Streaming LLM responses | Ollama supports streaming; wiring it through WebSockets adds complexity. Polling works for demo. |
 | Fine-tuned model | Domain fine-tuning on actuarial text would improve quality. Out of scope for 2-3 day timeline. |
