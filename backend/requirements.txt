@@ -1,0 +1,60 @@
+# Web framework
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
+python-multipart==0.0.9
+
+# Config
+pydantic-settings==2.2.1
+python-dotenv==1.0.1
+
+# Database
+sqlalchemy[asyncio]==2.0.29
+asyncpg==0.29.0
+alembic==1.13.1
+psycopg2-binary==2.9.9
+
+# Job queue
+celery[redis]==5.3.6
+redis==5.0.4
+
+# Vector store
+chromadb==0.5.4
+
+# LLM / AI
+httpx==0.27.0
+sentence-transformers==2.7.0
+
+# PDF processing
+pdfplumber==0.11.0
+PyMuPDF==1.24.2
+pytesseract==0.3.10
+Pillow==10.3.0
+
+# Data processing
+pandas==2.2.2
+openpyxl==3.1.2
+xlrd==2.0.1
+
+# SQL safety
+sqlglot==23.12.2
+
+# Logging
+structlog==24.1.0
+
+# Metrics
+prometheus-client==0.20.0
+
+# Validation
+pydantic==2.7.0
+
+# Utilities
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+aiofiles==23.2.1
+tenacity==8.3.0
+reportlab==4.1.0
+
+# Testing
+pytest==8.1.1
+pytest-asyncio==0.23.6
+httpx==0.27.0
