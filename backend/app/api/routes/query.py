@@ -25,6 +25,7 @@ class QueryRequest(BaseModel):
     document_ids: list[str] = []
     scenario_assumptions: dict | None = None
     scenario_label: str | None = None
+    is_ephemeral: bool = False  # True for scenario runs - result is NOT persisted to session memory
 
 
 class ActionRequest(BaseModel):
@@ -102,15 +103,21 @@ async def query(
     )
     db.add(audit)
 
-    # Update session memory with this turn
-    assistant_text = str(result["recommendation"].get("action", ""))
-    new_context = await add_turn(session, req.question, assistant_text, db)
+    if req.is_ephemeral:
+        # Scenario run: do NOT persist to the conversational memory timeline.
+        # Scenario assumptions are synthetic; writing them into session memory
+        # would contaminate subsequent real queries with artificial context.
+        # The audit record is still written for traceability.
+        logger.info("scenario_ephemeral", session_id=str(session.id), label=req.scenario_label)
+    else:
+        # Normal conversational turn: persist to session memory
+        assistant_text = str(result["recommendation"].get("action", ""))
+        await add_turn(session, req.question, assistant_text, db)
 
-    # Update session's active datasets/documents
-    if dataset_ids:
-        session.active_dataset_ids = dataset_ids
-    if document_ids:
-        session.active_document_ids = document_ids
+        if dataset_ids:
+            session.active_dataset_ids = dataset_ids
+        if document_ids:
+            session.active_document_ids = document_ids
 
     await db.commit()
 

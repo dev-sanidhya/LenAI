@@ -68,6 +68,7 @@ export default function QueryPage() {
             document_ids: selectedDocs.length ? selectedDocs : readyDocs.map((d) => d.document_id),
             scenario_assumptions: assumptions,
             scenario_label: sc.label,
+            is_ephemeral: true, // Scenario runs are NOT written into conversational memory
           });
           if (!sessionId) setSessionId(res.data.session_id);
           results.push({ ...res.data, scenarioLabel: sc.label } as QueryResponse & { scenarioLabel: string });
