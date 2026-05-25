@@ -13,6 +13,16 @@ export const api = axios.create({
 // Inject Bearer token from in-memory store (not localStorage - no XSS persistence)
 let _token: string | null = null;
 
+// Callback the AuthContext registers so it can react to forced logouts
+// (e.g. when the interceptor sees a 401 from an expired token).
+// Without this, clearing the token would leave isAuthenticated=true and
+// the UI would stay mounted, firing repeated failing requests.
+let _onUnauthorized: (() => void) | null = null;
+
+export function registerUnauthorizedHandler(handler: (() => void) | null) {
+  _onUnauthorized = handler;
+}
+
 export function setAuthToken(token: string | null) {
   _token = token;
   if (token) {
@@ -32,8 +42,10 @@ api.interceptors.response.use(
     const message =
       err.response?.data?.detail || err.message || "An unexpected error occurred";
     if (err.response?.status === 401) {
-      // Token expired or invalid - clear it and let AuthContext redirect to login
+      // Token expired or invalid: clear it AND notify AuthContext so the UI
+      // unmounts the authenticated tree and routes back to the login screen.
       setAuthToken(null);
+      if (_onUnauthorized) _onUnauthorized();
     }
     return Promise.reject(new Error(message));
   }
