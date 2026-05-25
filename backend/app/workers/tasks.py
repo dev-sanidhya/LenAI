@@ -38,6 +38,13 @@ def ingest_pdf_task(self, document_id: str, file_path: str, tenant_id: str):
 
         try:
             path = Path(file_path)
+
+            # Resolve page_count before chunking so it is always populated
+            import fitz as _fitz
+            _fitz_doc = _fitz.open(str(path))
+            page_count = len(_fitz_doc)
+            _fitz_doc.close()
+
             chunks, ocr_used = extract_and_chunk(path, document_id, tenant_id)
 
             # Delete stale chunks before re-inserting (idempotent)
@@ -50,6 +57,7 @@ def ingest_pdf_task(self, document_id: str, file_path: str, tenant_id: str):
                 if doc:
                     doc.upload_status = "ready"
                     doc.chunk_count = len(chunks)
+                    doc.page_count = page_count
                     doc.ocr_used = ocr_used
                     await db.commit()
 
