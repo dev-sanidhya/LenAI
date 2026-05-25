@@ -2,6 +2,7 @@ import hashlib
 import uuid
 from pathlib import Path
 import pandas as pd
+import sqlalchemy as sa
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.logging import get_logger
@@ -24,7 +25,7 @@ def _infer_schema(df: pd.DataFrame) -> dict:
         dtype = str(df[col].dtype)
         null_count = int(df[col].isna().sum())
         unique_count = int(df[col].nunique())
-        entry = {
+        entry: dict = {
             "dtype": dtype,
             "null_count": null_count,
             "null_pct": round(null_count / len(df) * 100, 2) if len(df) else 0,
@@ -41,7 +42,6 @@ def _infer_schema(df: pd.DataFrame) -> dict:
                 "p50": round(float(desc["50%"]), 4) if "50%" in desc else None,
                 "p75": round(float(desc["75%"]), 4) if "75%" in desc else None,
             }
-            # Detect outliers using IQR
             q1 = df[col].quantile(0.25)
             q3 = df[col].quantile(0.75)
             iqr = q3 - q1
@@ -54,20 +54,7 @@ def _infer_schema(df: pd.DataFrame) -> dict:
 
 
 def _safe_column_name(col: str) -> str:
-    """Normalize column names to be safe SQL identifiers."""
     return col.strip().lower().replace(" ", "_").replace("-", "_").replace(".", "_")[:63]
-
-
-def _pandas_dtype_to_pg(dtype: str) -> str:
-    if "int" in dtype:
-        return "BIGINT"
-    if "float" in dtype:
-        return "DOUBLE PRECISION"
-    if "bool" in dtype:
-        return "BOOLEAN"
-    if "datetime" in dtype:
-        return "TIMESTAMP"
-    return "TEXT"
 
 
 async def ingest_csv(
@@ -78,8 +65,17 @@ async def ingest_csv(
 ) -> dict:
     """
     Load CSV/Excel into PostgreSQL as a tenant-namespaced table.
-    Idempotent: re-upload of same file_hash drops and recreates the table.
-    Table name pattern: t_{tenant_id_short}_{dataset_id_short}
+
+    Schema authority: pandas `to_sql` is the single source of truth for the
+    table schema. We do NOT pre-create the table with manual DDL - that pattern
+    causes the DDL to be silently discarded when to_sql(if_exists="replace")
+    drops and recreates the table.
+
+    After to_sql, we add a _row_id SERIAL column for a stable primary key.
+    This keeps schema creation atomic and avoids the DDL/ORM conflict.
+
+    Table name pattern: t_{tenant_short}_{dataset_short}
+    Idempotent: same dataset_id always maps to the same table name.
     """
     suffix = file_path.suffix.lower()
     if suffix in (".xlsx", ".xls"):
@@ -87,39 +83,39 @@ async def ingest_csv(
     else:
         df = pd.read_csv(file_path)
 
-    # Sanitize column names
+    # Sanitize column names to safe SQL identifiers
     df.columns = [_safe_column_name(c) for c in df.columns]
-    # Drop fully empty columns
     df = df.dropna(axis=1, how="all")
 
     schema = _infer_schema(df)
 
-    # Table name: safe, tenant-scoped, deterministic from dataset_id
     tenant_short = tenant_id.replace("-", "")[:8]
     ds_short = dataset_id.replace("-", "")[:8]
     table_name = f"t_{tenant_short}_{ds_short}"
 
-    # Build CREATE TABLE DDL
-    col_defs = ["_row_id SERIAL PRIMARY KEY"]
-    for col in df.columns:
-        dtype_str = str(df[col].dtype)
-        pg_type = _pandas_dtype_to_pg(dtype_str)
-        col_defs.append(f'"{col}" {pg_type}')
-    ddl = f'CREATE TABLE IF NOT EXISTS "{table_name}" ({", ".join(col_defs)})'
-
-    # Drop existing table for this dataset (idempotent re-upload)
-    await db.execute(text(f'DROP TABLE IF EXISTS "{table_name}"'))
-    await db.execute(text(ddl))
-    await db.commit()
-
-    # Bulk insert using pandas to_sql via sync connection
-    # We use the sync DSN via psycopg2 for bulk insert efficiency
     from app.core.config import get_settings
-    import sqlalchemy as sa
     settings = get_settings()
+
+    # Use a sync engine for pandas interop.
+    # to_sql is the single schema authority - no competing manual DDL.
     sync_engine = sa.create_engine(settings.sync_database_url)
-    df.to_sql(table_name, sync_engine, if_exists="replace", index=False, chunksize=1000)
-    sync_engine.dispose()
+    try:
+        df.to_sql(
+            table_name,
+            sync_engine,
+            if_exists="replace",  # sole schema creator - drops existing, recreates cleanly
+            index=False,
+            chunksize=1000,
+        )
+        # Add a stable primary key after pandas creates the table.
+        # ALTER TABLE is safe here because to_sql just finished writing.
+        with sync_engine.connect() as conn:
+            conn.execute(sa.text(
+                f'ALTER TABLE "{table_name}" ADD COLUMN IF NOT EXISTS _row_id SERIAL PRIMARY KEY'
+            ))
+            conn.commit()
+    finally:
+        sync_engine.dispose()
 
     row_count = len(df)
     col_count = len(df.columns)
