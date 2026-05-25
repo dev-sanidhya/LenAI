@@ -1,21 +1,53 @@
 from fastapi import Header, HTTPException, status, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from jose import jwt, JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
+from app.core.logging import get_logger
 from app.db.session import get_db
 
 settings = get_settings()
+logger = get_logger(__name__)
+
+ALGORITHM = "HS256"
+bearer_scheme = HTTPBearer(auto_error=False)
 
 
-async def verify_api_key(x_api_key: str = Header(..., alias="X-API-Key")) -> str:
-    if x_api_key != settings.api_key:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
-    return x_api_key
+def _decode_jwt(token: str) -> dict:
+    try:
+        return jwt.decode(token, settings.app_secret_key, algorithms=[ALGORITHM])
+    except JWTError as e:
+        logger.warning("jwt_decode_failed", error=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token. POST /api/v1/auth/token to get a new one.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
 
-def get_tenant_id(x_api_key: str = Depends(verify_api_key)) -> str:
+async def get_current_claims(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> dict:
     """
-    In a real multi-tenant system this would decode a JWT and return the org ID.
-    For this demo we derive the tenant from the API key (single-tenant mode).
+    Validate Bearer JWT and return decoded claims.
+    The raw API key never travels over the wire after the initial /auth/token exchange.
+    Tenant ID is embedded in signed JWT claims, not derived client-side.
     """
-    import hashlib
-    return hashlib.sha256(x_api_key.encode()).hexdigest()[:16]
+    if credentials is None or not credentials.credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authorization header missing. POST /api/v1/auth/token first.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return _decode_jwt(credentials.credentials)
+
+
+def get_tenant_id(claims: dict = Depends(get_current_claims)) -> str:
+    tenant_id = claims.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="tenant_id missing from token")
+    return tenant_id
+
+
+# Backward-compatible alias used across routes
+verify_token = get_current_claims

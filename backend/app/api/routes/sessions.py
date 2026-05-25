@@ -2,7 +2,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.api.deps import verify_api_key, get_tenant_id
+from app.api.deps import verify_token, get_tenant_id
 from app.db.session import get_db
 from app.models.session_model import ChatSession
 from app.core.logging import get_logger
@@ -15,7 +15,7 @@ logger = get_logger(__name__)
 async def list_sessions(
     tenant_id: str = Depends(get_tenant_id),
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(verify_api_key),
+    _: str = Depends(verify_token),
 ):
     result = await db.execute(
         select(ChatSession)
@@ -43,7 +43,7 @@ async def get_session(
     session_id: str,
     tenant_id: str = Depends(get_tenant_id),
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(verify_api_key),
+    _: str = Depends(verify_token),
 ):
     result = await db.execute(
         select(ChatSession).where(

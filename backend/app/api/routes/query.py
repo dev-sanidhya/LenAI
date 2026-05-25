@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.api.deps import verify_api_key, get_tenant_id
+from app.api.deps import verify_token, get_tenant_id
 from app.db.session import get_db
 from app.models.audit import AuditRecord
 from app.models.dataset import Dataset
@@ -37,7 +37,7 @@ async def query(
     req: QueryRequest,
     tenant_id: str = Depends(get_tenant_id),
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(verify_api_key),
+    _: str = Depends(verify_token),
 ):
     if not req.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty")
@@ -134,7 +134,7 @@ async def submit_action(
     req: ActionRequest,
     tenant_id: str = Depends(get_tenant_id),
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(verify_api_key),
+    _: str = Depends(verify_token),
 ):
     """Accept, Reject, or Request Review for a recommendation. Reject requires a comment."""
     valid_actions = {"accept", "reject", "review"}
@@ -170,7 +170,7 @@ async def compare_scenarios(
     questions: list[QueryRequest],
     tenant_id: str = Depends(get_tenant_id),
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(verify_api_key),
+    _: str = Depends(verify_token),
 ):
     """Run the same question under 2-3 different assumption sets, return side-by-side."""
     if len(questions) < 2 or len(questions) > 3:

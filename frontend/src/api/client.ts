@@ -1,24 +1,47 @@
 import axios from "axios";
 
 const BASE_URL = (import.meta.env.VITE_API_URL as string) || "http://localhost:8000";
-const API_KEY = (import.meta.env.VITE_API_KEY as string) || "dev-api-key-change-in-production";
 
+// API key is NEVER embedded in the frontend bundle.
+// The user provides it once at login; the backend exchanges it for a signed JWT.
+// All subsequent requests use the JWT. The raw API key is discarded client-side.
 export const api = axios.create({
   baseURL: `${BASE_URL}/api/v1`,
-  headers: {
-    "X-API-Key": API_KEY,
-    "Content-Type": "application/json",
-  },
+  headers: { "Content-Type": "application/json" },
 });
+
+// Inject Bearer token from in-memory store (not localStorage - no XSS persistence)
+let _token: string | null = null;
+
+export function setAuthToken(token: string | null) {
+  _token = token;
+  if (token) {
+    api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+  } else {
+    delete api.defaults.headers.common["Authorization"];
+  }
+}
+
+export function getAuthToken(): string | null {
+  return _token;
+}
 
 api.interceptors.response.use(
   (res) => res,
   (err) => {
     const message =
       err.response?.data?.detail || err.message || "An unexpected error occurred";
+    if (err.response?.status === 401) {
+      // Token expired or invalid - clear it and let AuthContext redirect to login
+      setAuthToken(null);
+    }
     return Promise.reject(new Error(message));
   }
 );
+
+// --- Auth ---
+export const exchangeApiKey = (apiKey: string) =>
+  axios.post(`${BASE_URL}/api/v1/auth/token`, { api_key: apiKey });
 
 // --- Ingestion ---
 export const uploadCsv = (file: File) => {
@@ -48,30 +71,38 @@ export const submitQuery = (payload: {
   document_ids?: string[];
   scenario_assumptions?: Record<string, unknown>;
   scenario_label?: string;
+  is_ephemeral?: boolean;
 }) => api.post("/query", payload);
 
 export const submitAction = (auditRecordId: string, action: string, comment?: string) =>
   api.post(`/query/${auditRecordId}/action`, { action, comment });
 
-export const compareScenarios = (
-  scenarios: Array<{
-    question: string;
-    session_id?: string;
-    dataset_ids?: string[];
-    document_ids?: string[];
-    scenario_assumptions?: Record<string, unknown>;
-    scenario_label?: string;
-  }>
-) => api.post("/query/scenarios", scenarios);
-
 // --- Audit ---
 export const listAuditRecords = (limit = 50, offset = 0) =>
   api.get(`/audit?limit=${limit}&offset=${offset}`);
+
 export const getAuditRecord = (id: string) => api.get(`/audit/${id}`);
-export const exportAuditJson = (id: string) =>
-  `${BASE_URL}/api/v1/audit/${id}/export/json`;
-export const exportAuditPdf = (id: string) =>
-  `${BASE_URL}/api/v1/audit/${id}/export/pdf`;
+
+/**
+ * Download audit export via authenticated fetch (not bare <a href>).
+ * Browsers do NOT attach custom headers to anchor navigations,
+ * so we must use the axios instance which carries the Bearer token.
+ */
+export async function downloadAuditExport(id: string, format: "json" | "pdf"): Promise<void> {
+  const response = await api.get(`/audit/${id}/export/${format}`, {
+    responseType: "blob",
+  });
+  const mimeType = format === "json" ? "application/json" : "application/pdf";
+  const blob = new Blob([response.data], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `lenai_audit_${id.slice(0, 8)}.${format}`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
 
 // --- Sessions ---
 export const listSessions = () => api.get("/sessions");

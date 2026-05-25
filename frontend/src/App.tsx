@@ -1,10 +1,18 @@
 import { Routes, Route, Navigate } from "react-router-dom";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import Layout from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
 import QueryPage from "./pages/QueryPage";
 import AuditPage from "./pages/AuditPage";
+import LoginPage from "./pages/LoginPage";
 
-export default function App() {
+function AppRoutes() {
+  const { isAuthenticated } = useAuth();
+
+  if (!isAuthenticated) {
+    return <LoginPage />;
+  }
+
   return (
     <Routes>
       <Route path="/" element={<Layout />}>
@@ -14,5 +22,13 @@ export default function App() {
         <Route path="audit" element={<AuditPage />} />
       </Route>
     </Routes>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppRoutes />
+    </AuthProvider>
   );
 }

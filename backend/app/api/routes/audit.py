@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Preformatted
-from app.api.deps import verify_api_key, get_tenant_id
+from app.api.deps import verify_token, get_tenant_id
 from app.db.session import get_db
 from app.models.audit import AuditRecord
 from app.core.logging import get_logger
@@ -22,7 +22,7 @@ logger = get_logger(__name__)
 async def list_audit_records(
     tenant_id: str = Depends(get_tenant_id),
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(verify_api_key),
+    _: str = Depends(verify_token),
     limit: int = 50,
     offset: int = 0,
 ):
@@ -42,7 +42,7 @@ async def get_audit_record(
     audit_record_id: str,
     tenant_id: str = Depends(get_tenant_id),
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(verify_api_key),
+    _: str = Depends(verify_token),
 ):
     result = await db.execute(
         select(AuditRecord).where(
@@ -61,7 +61,7 @@ async def export_json(
     audit_record_id: str,
     tenant_id: str = Depends(get_tenant_id),
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(verify_api_key),
+    _: str = Depends(verify_token),
 ):
     result = await db.execute(
         select(AuditRecord).where(
@@ -87,7 +87,7 @@ async def export_pdf(
     audit_record_id: str,
     tenant_id: str = Depends(get_tenant_id),
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(verify_api_key),
+    _: str = Depends(verify_token),
 ):
     result = await db.execute(
         select(AuditRecord).where(

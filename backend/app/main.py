@@ -9,7 +9,7 @@ from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_
 from starlette.responses import Response
 from app.core.config import get_settings
 from app.core.logging import configure_logging, get_logger
-from app.api.routes import health, ingest, query, audit, sessions
+from app.api.routes import health, ingest, query, audit, sessions, auth
 
 configure_logging()
 logger = get_logger(__name__)
@@ -80,6 +80,7 @@ def create_app() -> FastAPI:
         return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
     app.include_router(health.router)
+    app.include_router(auth.router, prefix="/api/v1")
     app.include_router(ingest.router, prefix="/api/v1")
     app.include_router(query.router, prefix="/api/v1")
     app.include_router(audit.router, prefix="/api/v1")

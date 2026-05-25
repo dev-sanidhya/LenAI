@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.api.deps import verify_api_key, get_tenant_id
+from app.api.deps import verify_token, get_tenant_id
 from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.dataset import Dataset
@@ -39,7 +39,7 @@ async def upload_csv(
     file: UploadFile = File(...),
     tenant_id: str = Depends(get_tenant_id),
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(verify_api_key),
+    _: str = Depends(verify_token),
 ):
     content = await file.read()
     _validate_upload(file.filename, len(content))
@@ -93,7 +93,7 @@ async def upload_pdf(
     file: UploadFile = File(...),
     tenant_id: str = Depends(get_tenant_id),
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(verify_api_key),
+    _: str = Depends(verify_token),
 ):
     content = await file.read()
     _validate_upload(file.filename, len(content))
@@ -145,7 +145,7 @@ async def csv_status(
     dataset_id: str,
     tenant_id: str = Depends(get_tenant_id),
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(verify_api_key),
+    _: str = Depends(verify_token),
 ):
     result = await db.execute(
         select(Dataset).where(Dataset.id == uuid.UUID(dataset_id), Dataset.tenant_id == tenant_id)
@@ -169,7 +169,7 @@ async def update_column_tags(
     tags: dict,
     tenant_id: str = Depends(get_tenant_id),
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(verify_api_key),
+    _: str = Depends(verify_token),
 ):
     """Let the user tag columns as 'feature', 'target', or 'ignore'."""
     result = await db.execute(
@@ -188,7 +188,7 @@ async def pdf_status(
     document_id: str,
     tenant_id: str = Depends(get_tenant_id),
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(verify_api_key),
+    _: str = Depends(verify_token),
 ):
     result = await db.execute(
         select(Document).where(Document.id == uuid.UUID(document_id), Document.tenant_id == tenant_id)
@@ -209,7 +209,7 @@ async def pdf_status(
 async def list_datasets(
     tenant_id: str = Depends(get_tenant_id),
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(verify_api_key),
+    _: str = Depends(verify_token),
 ):
     result = await db.execute(
         select(Dataset).where(Dataset.tenant_id == tenant_id, Dataset.is_active == True)
@@ -232,7 +232,7 @@ async def list_datasets(
 async def list_documents(
     tenant_id: str = Depends(get_tenant_id),
     db: AsyncSession = Depends(get_db),
-    _: str = Depends(verify_api_key),
+    _: str = Depends(verify_token),
 ):
     result = await db.execute(
         select(Document).where(Document.tenant_id == tenant_id, Document.is_active == True)
