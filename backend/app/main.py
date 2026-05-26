@@ -25,13 +25,9 @@ INGEST_COUNT = Counter("lenai_ingestion_total", "Total ingestion jobs", ["type",
 async def lifespan(app: FastAPI):
     logger.info("startup", env=settings.app_env, llm_model=settings.ollama_llm_model)
 
-    # Pre-load the cross-encoder on startup so first request doesn't pay cold start
-    try:
-        from app.services.reasoning.rag_retriever import _get_cross_encoder
-        _get_cross_encoder()
-        logger.info("cross_encoder_loaded")
-    except Exception as e:
-        logger.warning("cross_encoder_load_failed", error=str(e))
+    # Cross-encoder is loaded lazily on first query (saves ~1.5GB of memory
+    # at startup, which matters on memory-constrained WSL2 hosts). The first
+    # query pays a one-time 5-10s warmup cost; subsequent queries are fast.
 
     yield
 

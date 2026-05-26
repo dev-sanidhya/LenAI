@@ -24,6 +24,6 @@ RUN mkdir -p /app/uploads
 
 # Run Alembic migrations then start the app
 # Migrations run before traffic is accepted; if they fail, container exits cleanly.
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"]
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1"]
 
 EXPOSE 8000
