@@ -1,8 +1,7 @@
-version: "3.9"
-
 # =============================================================================
-# LenAI - Full Stack (6 services)
+# LenAI - Full Stack (postgres, chromadb, redis, ollama, backend, worker, frontend)
 # Usage: cp .env.example .env && docker compose up --build
+# (Compose Spec no longer uses the top-level `version:` key)
 # =============================================================================
 
 x-logging: &default-logging
