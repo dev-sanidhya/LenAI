@@ -3,7 +3,7 @@ import shutil
 import uuid
 from pathlib import Path
 from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import verify_token, get_tenant_id
 from app.core.config import get_settings
@@ -46,16 +46,26 @@ async def upload_csv(
 
     file_hash = _file_hash(content)
 
-    # Idempotency: check if same file already uploaded
+    # Idempotency: if the same file hash exists in any non-failed state,
+    # return the existing record. Multiple rows can exist if uploads raced
+    # before the first one finished, so we pick the newest.
     existing = await db.execute(
-        select(Dataset).where(Dataset.tenant_id == tenant_id, Dataset.file_hash == file_hash, Dataset.is_active == True)
+        select(Dataset)
+        .where(
+            Dataset.tenant_id == tenant_id,
+            Dataset.file_hash == file_hash,
+            Dataset.is_active == True,
+            Dataset.upload_status != "failed",
+        )
+        .order_by(desc(Dataset.created_at))
+        .limit(1)
     )
-    existing_ds = existing.scalar_one_or_none()
-    if existing_ds and existing_ds.upload_status == "ready":
+    existing_ds = existing.scalars().first()
+    if existing_ds:
         return {
             "dataset_id": str(existing_ds.id),
-            "status": "already_exists",
-            "message": "Identical file already uploaded and processed",
+            "status": "already_exists" if existing_ds.upload_status == "ready" else existing_ds.upload_status,
+            "message": f"Identical file already uploaded (status: {existing_ds.upload_status})",
             "job_id": existing_ds.job_id,
         }
 
@@ -100,15 +110,24 @@ async def upload_pdf(
 
     file_hash = _file_hash(content)
 
+    # Same idempotency pattern as CSV: newest non-failed match wins.
     existing = await db.execute(
-        select(Document).where(Document.tenant_id == tenant_id, Document.file_hash == file_hash, Document.is_active == True)
+        select(Document)
+        .where(
+            Document.tenant_id == tenant_id,
+            Document.file_hash == file_hash,
+            Document.is_active == True,
+            Document.upload_status != "failed",
+        )
+        .order_by(desc(Document.created_at))
+        .limit(1)
     )
-    existing_doc = existing.scalar_one_or_none()
-    if existing_doc and existing_doc.upload_status == "ready":
+    existing_doc = existing.scalars().first()
+    if existing_doc:
         return {
             "document_id": str(existing_doc.id),
-            "status": "already_exists",
-            "message": "Identical document already uploaded and processed",
+            "status": "already_exists" if existing_doc.upload_status == "ready" else existing_doc.upload_status,
+            "message": f"Identical document already uploaded (status: {existing_doc.upload_status})",
         }
 
     document_id = uuid.uuid4()

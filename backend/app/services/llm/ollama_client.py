@@ -9,8 +9,21 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 settings = get_settings()
 
-# Semaphore enforces OLLAMA_MAX_CONCURRENCY - prevents OOM under load
-_semaphore = asyncio.Semaphore(settings.ollama_max_concurrency)
+# Semaphore enforces OLLAMA_MAX_CONCURRENCY - prevents OOM under load.
+# Stored per-event-loop so the Celery worker (which spins up a new loop per
+# task via asyncio.new_event_loop) doesn't reuse a semaphore bound to a
+# dead loop, which raises 'Future attached to a different loop'.
+_semaphores: dict = {}
+
+
+def _get_semaphore() -> asyncio.Semaphore:
+    loop = asyncio.get_event_loop()
+    sem = _semaphores.get(id(loop))
+    if sem is None:
+        sem = asyncio.Semaphore(settings.ollama_max_concurrency)
+        _semaphores[id(loop)] = sem
+    return sem
+
 
 PROMPT_VERSION = "v1.0"
 
@@ -28,7 +41,7 @@ class OllamaClient:
     )
     async def generate(self, prompt: str, system: str = "", temperature: float = 0.1) -> str:
         """Single-shot generation with retry and concurrency control."""
-        async with _semaphore:
+        async with _get_semaphore():
             async with httpx.AsyncClient(timeout=120.0) as client:
                 payload = {
                     "model": self.llm_model,

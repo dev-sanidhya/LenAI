@@ -116,6 +116,11 @@ services:
       resources:
         limits:
           memory: 10g
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
   # ---------------------------------------------------------------------------
   # Backend - FastAPI app (API + Celery worker in same image, different command)
@@ -158,7 +163,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2g
+          memory: 4g
 
   # ---------------------------------------------------------------------------
   # Celery Worker - ingestion job processor (same image as backend)
@@ -169,7 +174,11 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     logging: *default-logging
-    command: ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=info", "--concurrency=2", "-Q", "ingestion"]
+    # --pool=solo: single-process worker, no fork. Eliminates the
+    # copy-on-write memory blowup of the default prefork pool which
+    # was OOM-killing PDF ingestion on memory-constrained WSL2 hosts.
+    # Throughput trade-off is acceptable for this assignment workload.
+    command: ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=info", "--pool=solo", "-Q", "ingestion"]
     env_file: .env
     environment:
       POSTGRES_HOST: postgres
@@ -188,7 +197,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2g
+          memory: 4g
 
   # ---------------------------------------------------------------------------
   # Frontend - React app served by Nginx

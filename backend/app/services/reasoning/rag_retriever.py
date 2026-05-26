@@ -1,7 +1,6 @@
-from typing import Optional
+from typing import Optional, Any
 import chromadb
 from chromadb.config import Settings as ChromaSettings
-from sentence_transformers import CrossEncoder
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.services.llm.ollama_client import get_ollama_client
@@ -9,13 +8,18 @@ from app.services.llm.ollama_client import get_ollama_client
 logger = get_logger(__name__)
 settings = get_settings()
 
-# Cross-encoder loaded once at module init
-_cross_encoder: Optional[CrossEncoder] = None
+# Cross-encoder loaded lazily on first retrieve() call.
+# `sentence_transformers` + torch pull in ~1.5GB of memory at import time,
+# which OOM-killed the ingestion worker (which only needs store_chunks /
+# delete_chunks_for_document and never re-ranks). Lazy import keeps the
+# heavy stack out of the worker process entirely.
+_cross_encoder: Optional[Any] = None
 
 
-def _get_cross_encoder() -> CrossEncoder:
+def _get_cross_encoder():
     global _cross_encoder
     if _cross_encoder is None:
+        from sentence_transformers import CrossEncoder  # lazy: 1.5GB+
         logger.info("loading_cross_encoder", model="cross-encoder/ms-marco-MiniLM-L-6-v2")
         _cross_encoder = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", max_length=512)
     return _cross_encoder
