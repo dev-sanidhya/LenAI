@@ -105,11 +105,13 @@ services:
       OLLAMA_MAX_LOADED_MODELS: "2"
       OLLAMA_NUM_PARALLEL: ${OLLAMA_MAX_CONCURRENCY:-2}
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags | grep -q '${OLLAMA_LLM_MODEL:-llama3.1:8b}' || exit 1"]
+      # ollama CLI is the only HTTP-capable binary in the image (no curl/wget).
+      # `ollama list` exits 0 once the API is up; grep verifies the model is loaded.
+      test: ["CMD-SHELL", "ollama list | grep -q '${OLLAMA_LLM_MODEL:-llama3.1:8b}' || exit 1"]
       interval: 30s
       timeout: 10s
-      retries: 20
-      start_period: 300s
+      retries: 30
+      start_period: 600s
     deploy:
       resources:
         limits:

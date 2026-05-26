@@ -2,6 +2,9 @@
 # Ollama entrypoint: starts server, pulls required models, warms them up.
 # The backend's depends_on health check waits for models to be loaded
 # before routing any traffic. Cold-start latency never reaches the user.
+#
+# Important: the ollama/ollama image has NO curl, wget, or python.
+# All readiness probes use the `ollama` CLI itself, which IS present.
 
 set -e
 
@@ -12,9 +15,10 @@ echo "[ollama-entrypoint] Starting Ollama server..."
 ollama serve &
 SERVER_PID=$!
 
-# Wait for the Ollama REST API to become available
+# Wait for the Ollama API by polling the CLI - `ollama list` returns 0
+# only after the local API is responsive.
 echo "[ollama-entrypoint] Waiting for Ollama API..."
-until curl -sf http://localhost:11434/api/tags > /dev/null 2>&1; do
+until ollama list > /dev/null 2>&1; do
   sleep 2
 done
 echo "[ollama-entrypoint] Ollama API is up."
@@ -26,14 +30,12 @@ ollama pull "${LLM_MODEL}"
 echo "[ollama-entrypoint] Pulling embedding model: ${EMBED_MODEL}"
 ollama pull "${EMBED_MODEL}"
 
-# Warm up both models with a trivial request so the first real user request
-# hits a loaded model, not a cold one
+# Warm up the LLM so the first real user request hits a loaded model
 echo "[ollama-entrypoint] Warming up LLM..."
 ollama run "${LLM_MODEL}" "Hello" > /dev/null 2>&1 || true
 
-echo "[ollama-entrypoint] Warming up embedding model..."
-curl -sf http://localhost:11434/api/embeddings \
-  -d "{\"model\": \"${EMBED_MODEL}\", \"prompt\": \"warmup\"}" > /dev/null 2>&1 || true
+# Embedding model warms up on first real call - no need for a separate
+# curl warmup that would require curl in the image.
 
 echo "[ollama-entrypoint] Models ready. Server PID: ${SERVER_PID}"
 
