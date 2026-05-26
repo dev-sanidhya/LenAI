@@ -202,7 +202,7 @@ services:
     restart: unless-stopped
     logging: *default-logging
     ports:
-      - "3000:80"
+      - "4173:80"
     depends_on:
       backend:
         condition: service_healthy
