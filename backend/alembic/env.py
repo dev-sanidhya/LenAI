@@ -42,8 +42,12 @@ def do_run_migrations(connection: Connection) -> None:
 
 
 async def run_async_migrations() -> None:
+    # The async path must use the asyncpg driver URL.
+    # Using the sync (psycopg2) URL here makes async_engine_from_config raise
+    # 'asyncio extension requires an async driver'.
+    # Offline mode uses sync_database_url (above); online mode uses async here.
     config_section = config.get_section(config.config_ini_section, {})
-    config_section["sqlalchemy.url"] = settings.sync_database_url
+    config_section["sqlalchemy.url"] = settings.database_url
     connectable = async_engine_from_config(
         config_section,
         prefix="sqlalchemy.",

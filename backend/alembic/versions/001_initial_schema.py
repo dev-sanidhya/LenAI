@@ -19,7 +19,7 @@ def upgrade() -> None:
     op.create_table(
         "datasets",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("tenant_id", sa.String(64), nullable=False, index=True),
+        sa.Column("tenant_id", sa.String(64), nullable=False),
         sa.Column("filename", sa.String(255), nullable=False),
         sa.Column("original_filename", sa.String(255), nullable=False),
         sa.Column("file_hash", sa.String(64), nullable=False),
