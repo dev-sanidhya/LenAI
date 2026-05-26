@@ -33,6 +33,14 @@ def _get_chroma_client() -> chromadb.HttpClient:
     )
 
 
+def _build_where_filter(tenant_id: str, document_ids: Optional[list[str]] = None) -> dict:
+    if not document_ids:
+        return {"tenant_id": tenant_id}
+    if len(document_ids) == 1:
+        return {"$and": [{"tenant_id": tenant_id}, {"document_id": document_ids[0]}]}
+    return {"$and": [{"tenant_id": tenant_id}, {"document_id": {"$in": document_ids}}]}
+
+
 async def store_chunks(chunks: list[dict]) -> None:
     """Store embedded chunks in ChromaDB. Idempotent by chunk ID."""
     if not chunks:
@@ -102,13 +110,7 @@ async def retrieve(
     collection = client.get_or_create_collection(settings.chroma_collection_documents)
 
     # Build where filter - always scope to tenant
-    where: dict = {"tenant_id": tenant_id}
-    if document_ids:
-        if len(document_ids) == 1:
-            where["document_id"] = document_ids[0]
-        else:
-            where["$and"] = [{"tenant_id": tenant_id}, {"document_id": {"$in": document_ids}}]
-            where = {"$and": [{"tenant_id": tenant_id}, {"document_id": {"$in": document_ids}}]}
+    where = _build_where_filter(tenant_id, document_ids)
 
     results = collection.query(
         query_embeddings=[query_embedding],

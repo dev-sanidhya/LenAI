@@ -129,7 +129,11 @@ async def test_ephemeral_does_not_update_active_dataset_ids():
     with patch("app.api.routes.query.get_or_create_session", new=AsyncMock(return_value=fake_session)), \
          patch("app.api.routes.query.get_session_context", new=AsyncMock(return_value="")), \
          patch("app.api.routes.query.synthesize", new=AsyncMock(return_value=_fake_synthesis_result())), \
-         patch("app.api.routes.query.add_turn", new=AsyncMock()):
+         patch("app.api.routes.query.add_turn", new=AsyncMock()), \
+         patch("app.db.session.AsyncSessionLocal") as mock_session_local:
+
+        mock_db = AsyncMock()
+        mock_session_local.return_value.__aenter__.return_value = mock_db
 
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post(

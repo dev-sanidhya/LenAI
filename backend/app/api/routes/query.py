@@ -53,8 +53,13 @@ async def query(
     # Build dataset schemas for SQL agent
     dataset_schemas = []
     for ds_id in dataset_ids:
+        try:
+            ds_uuid = uuid.UUID(ds_id)
+        except ValueError:
+            logger.warning("invalid_dataset_id", dataset_id=ds_id)
+            continue
         result = await db.execute(
-            select(Dataset).where(Dataset.id == uuid.UUID(ds_id), Dataset.tenant_id == tenant_id)
+            select(Dataset).where(Dataset.id == ds_uuid, Dataset.tenant_id == tenant_id)
         )
         ds = result.scalar_one_or_none()
         if ds and ds.upload_status == "ready" and ds.table_name and ds.schema_info:

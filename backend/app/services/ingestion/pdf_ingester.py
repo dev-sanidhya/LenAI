@@ -105,6 +105,8 @@ def _chunk_text(text: str, source_meta: dict) -> list[dict]:
                 **source_meta,
             })
             chunk_idx += 1
+        if end >= len(words):
+            break
         start = end - approx_overlap
         if start >= end:
             break

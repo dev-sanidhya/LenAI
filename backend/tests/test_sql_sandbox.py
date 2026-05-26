@@ -1,5 +1,5 @@
 import pytest
-from app.services.reasoning.sql_agent import validate_sql
+from app.services.reasoning.sql_agent import validate_sql, _normalize_sql_response
 
 ALLOWED = ["t_abc12345_def67890"]
 
@@ -32,3 +32,13 @@ def test_rejects_unknown_table():
 def test_rejects_delete():
     ok, msg = validate_sql("DELETE FROM t_abc12345_def67890", ALLOWED)
     assert not ok
+
+
+def test_normalize_sql_strips_code_fences_and_trailing_text():
+    raw = """```sql
+    SELECT age, premium FROM t_abc12345_def67890 WHERE region = 'North';
+    ```
+    extra text
+    """
+    normalized = _normalize_sql_response(raw)
+    assert normalized == "SELECT age, premium FROM t_abc12345_def67890 WHERE region = 'North';"

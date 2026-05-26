@@ -17,13 +17,28 @@ Never reference system tables (pg_catalog, information_schema, pg_tables, etc).
 Output ONLY the SQL query, nothing else - no explanation, no markdown."""
 
 
+def _normalize_sql_response(sql: str) -> str:
+    sql = sql.strip()
+    sql = re.sub(r"```(?:sql)?", "", sql, flags=re.IGNORECASE).strip()
+
+    select_match = re.search(r"\bSELECT\b", sql, re.IGNORECASE)
+    if select_match:
+        sql = sql[select_match.start():]
+
+    semicolon_index = sql.find(";")
+    if semicolon_index != -1:
+        sql = sql[:semicolon_index + 1]
+
+    return sql.strip()
+
+
 def validate_sql(sql: str, allowed_tables: list[str]) -> tuple[bool, str]:
     """
     Parse SQL AST with sqlglot. Reject anything that is not a pure SELECT.
     Enforce that all referenced tables are in allowed_tables.
     This is enforced at execution layer, not just prompt.
     """
-    sql = sql.strip().rstrip(";")
+    sql = _normalize_sql_response(sql).rstrip(";")
 
     try:
         statements = sqlglot.parse(sql, dialect="postgres")
@@ -102,12 +117,9 @@ Write a SQL SELECT query to answer this question using the tables above.
 Only reference the tables and columns listed. Use standard PostgreSQL syntax."""
 
     ollama = get_ollama_client()
-    sql_raw = await ollama.generate(prompt=prompt, system=SQL_SYSTEM_PROMPT, temperature=0.0)
-
-    # Extract SQL from response (strip prose if model added any)
-    sql_match = re.search(r"SELECT\s+.+", sql_raw, re.DOTALL | re.IGNORECASE)
-    if sql_match:
-        sql_raw = sql_match.group(0).strip()
+    sql_raw = _normalize_sql_response(
+        await ollama.generate(prompt=prompt, system=SQL_SYSTEM_PROMPT, temperature=0.0)
+    )
 
     results = []
     is_valid, validated_sql = validate_sql(sql_raw, allowed_tables)
